@@ -8,7 +8,7 @@ import {
     resolveMatchingAssets,
     copyAssets
 } from '../src/assetCopier';
-import { preparePackage, patchDualExports } from '../src/packagePreparer';
+import { preparePackage, patchDualExports, relocateSourceMaps } from '../src/packagePreparer';
 import { Builder, builder } from '../src/builder';
 
 describe('@ostro/builder Unit Test Suite', () => {
@@ -282,6 +282,68 @@ describe('@ostro/builder Unit Test Suite', () => {
 
             // Calling on non-existent dir should not throw
             expect(() => patchDualExports(path.join(tempDir, 'non_existent'))).not.toThrow();
+        });
+
+        test('relocateSourceMaps moves .js.map files to maps/ directory and updates references', () => {
+            const buildDir = path.join(tempDir, 'build');
+            const subDir = path.join(buildDir, 'sub');
+            fs.mkdirSync(subDir, { recursive: true });
+
+            // Create root js + map (with sourceMappingURL comment)
+            fs.writeFileSync(path.join(buildDir, 'index.js'), 'console.log("root");\n//# sourceMappingURL=index.js.map\n');
+            fs.writeFileSync(path.join(buildDir, 'index.js.map'), JSON.stringify({
+                version: 3,
+                file: 'index.js',
+                sources: ['../src/index.ts']
+            }));
+
+            // Create sub js + map (without existing sourceMappingURL comment)
+            fs.writeFileSync(path.join(subDir, 'sub.js'), 'console.log("sub");\n');
+            fs.writeFileSync(path.join(subDir, 'sub.js.map'), JSON.stringify({
+                version: 3,
+                file: 'sub.js',
+                sources: ['../../src/sub/sub.ts']
+            }));
+
+            // Create a non-map file to ensure it is untouched
+            fs.writeFileSync(path.join(buildDir, 'dummy.txt'), 'text');
+
+            // Non-existent directory should return safely
+            expect(() => relocateSourceMaps(path.join(tempDir, 'non_existent'))).not.toThrow();
+
+            // Run relocation
+            relocateSourceMaps(buildDir);
+
+            // Maps should be relocated
+            expect(fs.existsSync(path.join(buildDir, 'maps', 'index.js.map'))).toBe(true);
+            expect(fs.existsSync(path.join(buildDir, 'maps', 'sub', 'sub.js.map'))).toBe(true);
+            expect(fs.existsSync(path.join(buildDir, 'index.js.map'))).toBe(false);
+            expect(fs.existsSync(path.join(subDir, 'sub.js.map'))).toBe(false);
+
+            // Re-running relocation should skip existing maps directory
+            relocateSourceMaps(buildDir);
+            expect(fs.existsSync(path.join(buildDir, 'maps', 'index.js.map'))).toBe(true);
+
+            // Check updated sourceMappingURL in index.js
+            const indexJs = fs.readFileSync(path.join(buildDir, 'index.js'), 'utf8');
+            expect(indexJs).toContain('//# sourceMappingURL=maps/index.js.map');
+
+            // Check updated sourceMappingURL in sub/sub.js
+            const subJs = fs.readFileSync(path.join(subDir, 'sub.js'), 'utf8');
+            expect(subJs).toContain('//# sourceMappingURL=../maps/sub/sub.js.map');
+
+            // Check sources in map json
+            const rootMap = JSON.parse(fs.readFileSync(path.join(buildDir, 'maps', 'index.js.map'), 'utf8'));
+            expect(rootMap.sources).toEqual(['../../src/index.ts']);
+
+            const nestedMap = JSON.parse(fs.readFileSync(path.join(buildDir, 'maps', 'sub', 'sub.js.map'), 'utf8'));
+            expect(nestedMap.sources).toEqual(['../../../src/sub/sub.ts']);
+
+            // Map with missing sources array and invalid JSON handling
+            fs.writeFileSync(path.join(buildDir, 'no-sources.js.map'), JSON.stringify({ version: 3 }));
+            fs.writeFileSync(path.join(buildDir, 'invalid.js.map'), '{invalid json');
+            relocateSourceMaps(buildDir);
+            expect(fs.existsSync(path.join(buildDir, 'maps', 'no-sources.js.map'))).toBe(true);
         });
     });
 

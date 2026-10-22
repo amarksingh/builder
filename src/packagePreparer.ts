@@ -62,6 +62,8 @@ export function preparePackage(pkgDir: string = process.cwd()): Record<string, a
 
     fs.writeFileSync(path.join(buildDir, 'package.json'), JSON.stringify(pubPkg, null, 2) + '\n');
 
+    relocateSourceMaps(buildDir);
+
     patchDualExports(buildDir);
 
     const copyIfExists = (file: string): void => {
@@ -76,6 +78,64 @@ export function preparePackage(pkgDir: string = process.cwd()): Record<string, a
     copyIfExists('LICENSE');
 
     return pubPkg;
+}
+
+/**
+ * Relocates emitted .js.map source map files into a dedicated maps/ directory within buildDir.
+ * Updates sourceMappingURL in corresponding .js files and preserves source paths in source maps.
+ *
+ * @param buildDir - The build output directory.
+ */
+export function relocateSourceMaps(buildDir: string): void {
+    if (!fs.existsSync(buildDir)) return;
+    const mapDir: string = path.join(buildDir, 'maps');
+
+    function scanAndMove(dir: string): void {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath: string = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (entry.name !== 'maps') {
+                    scanAndMove(fullPath);
+                }
+            } else if (entry.isFile() && entry.name.endsWith('.js.map')) {
+                const relFromBuild: string = path.relative(buildDir, fullPath);
+                const targetMapPath: string = path.join(mapDir, relFromBuild);
+                const targetSubDir: string = path.dirname(targetMapPath);
+                if (!fs.existsSync(targetSubDir)) {
+                    fs.mkdirSync(targetSubDir, { recursive: true });
+                }
+
+                try {
+                    const mapContent: any = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+                    const originalDir: string = path.dirname(fullPath);
+                    if (Array.isArray(mapContent.sources)) {
+                        mapContent.sources = mapContent.sources.map((s: string): string => {
+                            const absSource: string = path.resolve(originalDir, s);
+                            return path.relative(targetSubDir, absSource).replace(/\\/g, '/');
+                        });
+                    }
+                    fs.writeFileSync(targetMapPath, JSON.stringify(mapContent) + '\n');
+                    fs.unlinkSync(fullPath);
+
+                    const jsFile: string = fullPath.slice(0, -4);
+                    if (fs.existsSync(jsFile)) {
+                        let jsCode: string = fs.readFileSync(jsFile, 'utf8');
+                        const relMapUrl: string = path.relative(path.dirname(jsFile), targetMapPath).replace(/\\/g, '/');
+                        const mapCommentRegex: RegExp = /\/\/# sourceMappingURL=.*/g;
+                        if (mapCommentRegex.test(jsCode)) {
+                            jsCode = jsCode.replace(mapCommentRegex, `//# sourceMappingURL=${relMapUrl}`);
+                        } else {
+                            jsCode += `\n//# sourceMappingURL=${relMapUrl}\n`;
+                        }
+                        fs.writeFileSync(jsFile, jsCode);
+                    }
+                } catch (_) { }
+            }
+        }
+    }
+
+    scanAndMove(buildDir);
 }
 
 /**
@@ -99,3 +159,4 @@ export function patchDualExports(dir: string): void {
         }
     }
 }
+

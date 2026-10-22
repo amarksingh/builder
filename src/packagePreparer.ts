@@ -122,11 +122,13 @@ export function relocateSourceMaps(buildDir: string): void {
                     if (fs.existsSync(jsFile)) {
                         let jsCode: string = fs.readFileSync(jsFile, 'utf8');
                         const relMapUrl: string = path.relative(path.dirname(jsFile), targetMapPath).replace(/\\/g, '/');
+                        const commentPrefix: string = '/' + '/# sourceMappingURL=';
                         const mapCommentRegex: RegExp = /\/\/# sourceMappingURL=.*/g;
+                        const replacementComment: string = commentPrefix + relMapUrl;
                         if (mapCommentRegex.test(jsCode)) {
-                            jsCode = jsCode.replace(mapCommentRegex, `//# sourceMappingURL=${relMapUrl}`);
+                            jsCode = jsCode.replace(mapCommentRegex, replacementComment);
                         } else {
-                            jsCode += `\n//# sourceMappingURL=${relMapUrl}\n`;
+                            jsCode += '\n' + replacementComment + '\n';
                         }
                         fs.writeFileSync(jsFile, jsCode);
                     }

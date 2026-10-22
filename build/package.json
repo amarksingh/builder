@@ -1,0 +1,42 @@
+{
+  "name": "@ostro/builder",
+  "version": "2.0.0-alpha.1",
+  "description": "Unified TypeScript build tool and non-TS asset synchronizer for OstroJS ecosystem",
+  "main": "index.js",
+  "types": "types/index.d.ts",
+  "bin": {
+    "ostro-builder": "bin.js",
+    "ostro-build": "bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./index.js"
+    },
+    "./*": {
+      "types": "./types/*.d.ts",
+      "default": "./*.js"
+    }
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "engineStrict": true,
+  "keywords": [
+    "ostrojs",
+    "builder",
+    "compiler",
+    "assets"
+  ],
+  "author": "amar",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ostrojs/builder.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ostrojs/builder/issues"
+  },
+  "homepage": "https://github.com/ostrojs/builder#readme"
+}

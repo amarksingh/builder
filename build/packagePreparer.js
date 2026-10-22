@@ -130,9 +130,3 @@ function patchDualExports(dir) {
     }
 }
 //# sourceMappingURL=packagePreparer.js.map
-if (exports.default) {
-    const d = exports.default;
-    module.exports = d;
-    Object.assign(module.exports, exports);
-    module.exports.default = d;
-}

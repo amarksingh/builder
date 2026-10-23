@@ -29,7 +29,7 @@ function preparePackage(pkgDir = process.cwd()) {
     delete pubPkg.scripts;
     delete pubPkg.files;
     const stripBuild = (str) => {
-        return str.replace(/^(\.\/)?build\//, './');
+        return str.replace(/^(\.\/)?build\//, './').replace(/^(\.\/)?types\//, './.types/');
     };
     if (typeof pubPkg.main === 'string')
         pubPkg.main = stripBuild(pubPkg.main).replace(/^\.\//, '');
@@ -84,13 +84,13 @@ function preparePackage(pkgDir = process.cwd()) {
 function relocateSourceMaps(buildDir) {
     if (!fs_1.default.existsSync(buildDir))
         return;
-    const mapDir = path_1.default.join(buildDir, 'maps');
+    const mapDir = path_1.default.join(buildDir, '.maps');
     function scanAndMove(dir) {
         const entries = fs_1.default.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
             const fullPath = path_1.default.join(dir, entry.name);
             if (entry.isDirectory()) {
-                if (entry.name !== 'maps') {
+                if (entry.name !== '.maps' && entry.name !== 'maps') {
                     scanAndMove(fullPath);
                 }
             }
@@ -157,4 +157,4 @@ function patchDualExports(dir) {
         }
     }
 }
-//# sourceMappingURL=maps/packagePreparer.js.map
+//# sourceMappingURL=.maps/packagePreparer.js.map

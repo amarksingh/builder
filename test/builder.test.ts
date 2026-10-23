@@ -294,12 +294,12 @@ describe('@ostro/builder Unit Test Suite', () => {
 
             // Map should have moved
             expect(fs.existsSync(mapFile)).toBe(false);
-            const expectedMapPath = path.join(buildDir, 'maps', 'controllers', 'userController.js.map');
+            const expectedMapPath = path.join(buildDir, '.maps', 'controllers', 'userController.js.map');
             expect(fs.existsSync(expectedMapPath)).toBe(true);
 
             // JS file should point to new relative map path
             const updatedJs = fs.readFileSync(jsFile, 'utf8');
-            expect(updatedJs).toContain('sourceMappingURL=../maps/controllers/userController.js.map');
+            expect(updatedJs).toContain('sourceMappingURL=../.maps/controllers/userController.js.map');
 
             // Test JS file without existing sourceMappingURL comment
             const jsNoComment = path.join(subDir, 'noComment.js');
@@ -309,13 +309,13 @@ describe('@ostro/builder Unit Test Suite', () => {
 
             relocateSourceMaps(buildDir);
             const updatedNoCommentJs = fs.readFileSync(jsNoComment, 'utf8');
-            expect(updatedNoCommentJs).toContain('//# sourceMappingURL=../maps/controllers/noComment.js.map');
+            expect(updatedNoCommentJs).toContain('//# sourceMappingURL=../.maps/controllers/noComment.js.map');
 
             // Test map without sources property and without matching JS file
             const orphanMap = path.join(subDir, 'orphan.js.map');
             fs.writeFileSync(orphanMap, JSON.stringify({ version: 3 }));
             relocateSourceMaps(buildDir);
-            expect(fs.existsSync(path.join(buildDir, 'maps', 'controllers', 'orphan.js.map'))).toBe(true);
+            expect(fs.existsSync(path.join(buildDir, '.maps', 'controllers', 'orphan.js.map'))).toBe(true);
 
             // Non-existent directory handling
             expect(() => relocateSourceMaps(path.join(tempDir, 'non_existent'))).not.toThrow();

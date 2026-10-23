@@ -158,4 +158,4 @@ function copyAssets(rootDir = process.cwd(), distDir, configPath = 'tsconfig.jso
     }
     return filesToCopy;
 }
-//# sourceMappingURL=maps/assetCopier.js.map
+//# sourceMappingURL=.maps/assetCopier.js.map

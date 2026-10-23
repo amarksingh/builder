@@ -17,4 +17,4 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./assetCopier"), exports);
 __exportStar(require("./packagePreparer"), exports);
 __exportStar(require("./builder"), exports);
-//# sourceMappingURL=maps/index.js.map
+//# sourceMappingURL=.maps/index.js.map

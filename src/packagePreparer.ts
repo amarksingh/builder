@@ -27,7 +27,7 @@ export function preparePackage(pkgDir: string = process.cwd()): Record<string, a
     delete pubPkg.files;
 
     const stripBuild = (str: string): string => {
-        return str.replace(/^(\.\/)?build\//, './');
+        return str.replace(/^(\.\/)?build\//, './').replace(/^(\.\/)?types\//, './.types/');
     };
 
     if (typeof pubPkg.main === 'string') pubPkg.main = stripBuild(pubPkg.main).replace(/^\.\//, '');
@@ -85,14 +85,14 @@ export function preparePackage(pkgDir: string = process.cwd()): Record<string, a
  */
 export function relocateSourceMaps(buildDir: string): void {
     if (!fs.existsSync(buildDir)) return;
-    const mapDir: string = path.join(buildDir, 'maps');
+    const mapDir: string = path.join(buildDir, '.maps');
 
     function scanAndMove(dir: string): void {
         const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
             const fullPath: string = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                if (entry.name !== 'maps') {
+                if (entry.name !== '.maps' && entry.name !== 'maps') {
                     scanAndMove(fullPath);
                 }
             } else if (entry.isFile() && entry.name.endsWith('.js.map')) {

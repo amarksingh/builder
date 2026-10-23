@@ -1,6 +1,6 @@
 {
     "name": "@ostro/builder",
-    "version": "2.0.0-alpha.1",
+    "version": "2.0.0-alpha.2",
     "description": "Unified TypeScript build tool and non-TS asset synchronizer for OstroJS ecosystem",
     "main": "build/index.js",
     "types": "./build/types/index.d.ts",
@@ -20,9 +20,10 @@
     },
     "scripts": {
         "test": "npx c8 npx jest",
-        "build": "rm -rf build && npx tsc -p tsconfig.build.json && npx ts-node scripts/build.ts",
+        "build": "npm run lint:check && rm -rf build && npx tsc -p tsconfig.build.json && npx ts-node scripts/build.ts",
         "prepublishOnly": "npm run build",
-        "clean": "rm -rf build coverage"
+        "clean": "rm -rf build coverage",
+        "lint:check": "tsc --noEmit -p tsconfig.build.json"
     },
     "dependencies": {},
     "engines": {

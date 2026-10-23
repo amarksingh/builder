@@ -1,6 +1,6 @@
 {
   "name": "@ostro/builder",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "description": "Unified TypeScript build tool and non-TS asset synchronizer for OstroJS ecosystem",
   "main": "index.js",
   "types": "types/index.d.ts",

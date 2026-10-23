@@ -1,21 +1,21 @@
 {
     "name": "@ostro/builder",
-    "version": "2.0.0-alpha.3",
+    "version": "2.0.0-alpha.4",
     "description": "Unified TypeScript build tool and non-TS asset synchronizer for OstroJS ecosystem",
-    "main": "build/index.js",
-    "types": "./build/types/index.d.ts",
+    "main": "index.js",
+    "types": "types/index.d.ts",
     "bin": {
-        "ostro-builder": "build/bin.js",
-        "ostro-build": "build/bin.js"
+        "ostro-builder": "bin.js",
+        "ostro-build": "bin.js"
     },
     "exports": {
         ".": {
-            "types": "./build/types/index.d.ts",
-            "default": "./build/index.js"
+            "types": "./types/index.d.ts",
+            "default": "./index.js"
         },
         "./*": {
-            "types": "./build/types/*.d.ts",
-            "default": "./build/*.js"
+            "types": "./types/*.d.ts",
+            "default": "./*.js"
         }
     },
     "scripts": {
@@ -46,12 +46,6 @@
         "url": "https://github.com/ostrojs/builder/issues"
     },
     "homepage": "https://github.com/ostrojs/builder#readme",
-    "files": [
-        "build",
-        "package.json",
-        "README.md",
-        "LICENSE"
-    ],
     "devDependencies": {
         "@types/jest": "^30.0.0",
         "@types/node": "^22.0.0",

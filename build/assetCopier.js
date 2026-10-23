@@ -154,7 +154,18 @@ function copyAssets(rootDir = process.cwd(), distDir, configPath = 'tsconfig.jso
         if (!fs_1.default.existsSync(destFolder)) {
             fs_1.default.mkdirSync(destFolder, { recursive: true });
         }
-        fs_1.default.copyFileSync(srcFile, destFile);
+        let content = null;
+        try {
+            content = fs_1.default.readFileSync(srcFile, 'utf8');
+        }
+        catch (_) { }
+        const tsNodeBlockRegex = /\n?\/\/\s*Ensure ts-node is registered for TypeScript execution\s*\ntry\s*\{\s*const tsNode = require\(['"]ts-node['"]\);\s*if \(!tsNode\[Symbol\.for\(['"]ts-node\.register\.instance['"]\)\]\) \{\s*tsNode\.register\(\{\s*transpileOnly:\s*true\s*\}\);\s*\}\s*\}\s*catch \(_\) \{\s*\}\s*\n?/g;
+        if (content !== null && tsNodeBlockRegex.test(content)) {
+            fs_1.default.writeFileSync(destFile, content.replace(tsNodeBlockRegex, '\n'));
+        }
+        else {
+            fs_1.default.copyFileSync(srcFile, destFile);
+        }
     }
     return filesToCopy;
 }

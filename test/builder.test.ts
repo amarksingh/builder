@@ -73,7 +73,18 @@ describe('@ostro/builder Unit Test Suite', () => {
             fs.writeFileSync(path.join(tempDir, 'public', 'ignore.log'), 'log data');
             fs.writeFileSync(path.join(tempDir, 'public', 'excluded.ts'), 'export const a = 1;');
             fs.writeFileSync(path.join(tempDir, '.env'), 'KEY=val');
-            fs.writeFileSync(path.join(tempDir, 'assistant'), '#!/usr/bin/env node');
+            fs.writeFileSync(path.join(tempDir, 'assistant'), `#!/usr/bin/env node
+
+// Ensure ts-node is registered for TypeScript execution
+try {
+    const tsNode = require('ts-node');
+    if (!tsNode[Symbol.for('ts-node.register.instance')]) {
+        tsNode.register({ transpileOnly: true });
+    }
+} catch (_) { }
+
+const appModule = require('./bootstrap/app');
+`);
             fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({
                 name: 'test-app',
                 main: 'app.ts'
@@ -101,6 +112,9 @@ describe('@ostro/builder Unit Test Suite', () => {
             const distDir = path.join(tempDir, '.dist');
             expect(fs.existsSync(path.join(distDir, 'package.json'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, 'assistant'))).toBe(true);
+            const copiedAssistant = fs.readFileSync(path.join(distDir, 'assistant'), 'utf8');
+            expect(copiedAssistant).not.toContain('tsNode.register');
+            expect(copiedAssistant).toContain('const appModule = require');
             expect(fs.existsSync(path.join(distDir, '.env'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, 'public', 'robots.txt'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, 'public', 'css', 'style.css'))).toBe(true);

@@ -172,7 +172,17 @@ export function copyAssets(
         if (!fs.existsSync(destFolder)) {
             fs.mkdirSync(destFolder, { recursive: true });
         }
-        fs.copyFileSync(srcFile, destFile);
+        let content: string | null = null;
+        try {
+            content = fs.readFileSync(srcFile, 'utf8');
+        } catch (_) { }
+
+        const tsNodeBlockRegex: RegExp = /\n?\/\/\s*Ensure ts-node is registered for TypeScript execution\s*\ntry\s*\{\s*const tsNode = require\(['"]ts-node['"]\);\s*if \(!tsNode\[Symbol\.for\(['"]ts-node\.register\.instance['"]\)\]\) \{\s*tsNode\.register\(\{\s*transpileOnly:\s*true\s*\}\);\s*\}\s*\}\s*catch \(_\) \{\s*\}\s*\n?/g;
+        if (content !== null && tsNodeBlockRegex.test(content)) {
+            fs.writeFileSync(destFile, content.replace(tsNodeBlockRegex, '\n'));
+        } else {
+            fs.copyFileSync(srcFile, destFile);
+        }
     }
 
     return filesToCopy;

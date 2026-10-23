@@ -23,4 +23,4 @@ else {
         projectConfig
     });
 }
-//# sourceMappingURL=bin.js.map
+//# sourceMappingURL=maps/bin.js.map

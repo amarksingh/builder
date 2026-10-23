@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Prepares the build directory for publication by cleaning package.json and patching dual exports.
@@ -48,14 +48,11 @@ export function preparePackage(pkgDir: string = process.cwd()): Record<string, a
         const rewriteExports = (obj: any): any => {
             if (typeof obj === 'string') return stripBuild(obj);
             if (Array.isArray(obj)) return obj.map(rewriteExports);
-            if (typeof obj === 'object' && obj !== null) {
-                const res: Record<string, any> = {};
-                for (const [k, v] of Object.entries(obj)) {
-                    res[k] = rewriteExports(v);
-                }
-                return res;
+            const res: Record<string, any> = {};
+            for (const [k, v] of Object.entries(obj)) {
+                res[k] = rewriteExports(v);
             }
-            return obj;
+            return res;
         };
         pubPkg.exports = rewriteExports(pubPkg.exports);
     }

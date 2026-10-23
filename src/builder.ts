@@ -1,6 +1,6 @@
-import * as childProcess from 'child_process';
-import * as path from 'path';
-import * as fs from 'fs';
+import childProcess from 'child_process';
+import path from 'path';
+import fs from 'fs';
 import { copyAssets } from './assetCopier';
 import { preparePackage } from './packagePreparer';
 
@@ -29,13 +29,13 @@ export class Builder {
      */
     public build(options: BuildOptions = {}): void {
         const rootDir: string = options.rootDir || process.cwd();
-        const configPath: string = options.projectConfig || (fs.existsSync(path.join(rootDir, 'tsconfig.build.json')) ? 'tsconfig.build.json' : 'tsconfig.json');
+        const configPath: string = options.projectConfig || 'tsconfig.json';
 
         if (!options.copyAssetsOnly) {
             this.runCommand(`npx tsc -p ${configPath}`, rootDir);
         }
 
-        copyAssets(rootDir);
+        copyAssets(rootDir, undefined, configPath);
 
         if (options.prepare) {
             preparePackage(rootDir);

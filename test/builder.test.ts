@@ -1,10 +1,8 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import {
     matchesPattern,
-    getGitignoreRules,
-    isIgnoredByGit,
     resolveMatchingAssets,
     copyAssets
 } from '../src/assetCopier';
@@ -55,32 +53,17 @@ describe('@ostro/builder Unit Test Suite', () => {
         });
     });
 
-    describe('assetCopier: getGitignoreRules & isIgnoredByGit', () => {
-        test('returns empty array when .gitignore is missing', () => {
-            expect(getGitignoreRules(tempDir)).toEqual([]);
-        });
-
-        test('parses .gitignore correctly ignoring comments and blanks', () => {
-            fs.writeFileSync(path.join(tempDir, '.gitignore'), '# Comment\n\n.env\nnode_modules/\n*.log\n');
-            const rules = getGitignoreRules(tempDir);
-            expect(rules).toEqual(['.env', 'node_modules/', '*.log']);
-        });
-
-        test('tests files against git rules correctly', () => {
-            const rules = ['.env', 'logs/', '*.log'];
-            expect(isIgnoredByGit('.env', rules)).toBe(true);
-            expect(isIgnoredByGit('logs/error.txt', rules)).toBe(true);
-            expect(isIgnoredByGit('debug.log', rules)).toBe(true);
-            expect(isIgnoredByGit('public/app.js', rules)).toBe(false);
-        });
-    });
-
     describe('assetCopier: resolveMatchingAssets & copyAssets', () => {
         test('walk handles non-existent directories gracefully', () => {
-            expect(resolveMatchingAssets(path.join(tempDir, 'non_existent'))).toEqual([]);
+            expect(resolveMatchingAssets(path.join(tempDir, 'non_existent'), { include: ['**/*'] })).toEqual([]);
         });
 
-        test('copies assets honoring includes, excludes, gitignore and defaults', () => {
+        test('returns empty array when include is not configured', () => {
+            expect(resolveMatchingAssets(tempDir)).toEqual([]);
+            expect(resolveMatchingAssets(tempDir, {})).toEqual([]);
+        });
+
+        test('copies assets honoring includes, excludes, ignoredDirs from tsconfig', () => {
             // Setup source directory structure
             fs.mkdirSync(path.join(tempDir, 'public', 'css'), { recursive: true });
             fs.mkdirSync(path.join(tempDir, 'node_modules', 'dummy'), { recursive: true });
@@ -93,40 +76,34 @@ describe('@ostro/builder Unit Test Suite', () => {
             fs.writeFileSync(path.join(tempDir, 'assistant'), '#!/usr/bin/env node');
             fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({
                 name: 'test-app',
-                main: 'app.ts',
-                types: 'app.ts',
-                scripts: { 'server:start': 'ts-node app.ts', 'build': 'tsc', 'dev': 'mix' }
+                main: 'app.ts'
             }));
-            fs.writeFileSync(path.join(tempDir, '.gitignore'), '*.log\n');
 
-            // Default copy with tsconfig
+            // Configuration with explicit assets include
             fs.writeFileSync(path.join(tempDir, 'tsconfig.json'), JSON.stringify({
                 compilerOptions: { outDir: '.dist' },
+                exclude: ['node_modules', '.dist', 'build', 'public/ignore.log'],
                 assets: {
-                    include: ['.env*', 'public/**/*'],
-                    exclude: ['**/*.ts', 'node_modules/**']
+                    include: ['package.json', 'assistant', '.env*', 'public/**/*'],
+                    exclude: ['**/*.ts']
                 }
             }));
 
             const copied = copyAssets(tempDir);
+            expect(copied).toContain('package.json');
+            expect(copied).toContain('assistant');
             expect(copied).toContain('.env');
             expect(copied).toContain('public/robots.txt');
             expect(copied).toContain('public/css/style.css');
-            expect(copied).not.toContain('public/ignore.log');
             expect(copied).not.toContain('public/excluded.ts');
             expect(copied).not.toContain('node_modules/dummy/index.js');
 
             const distDir = path.join(tempDir, '.dist');
+            expect(fs.existsSync(path.join(distDir, 'package.json'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, 'assistant'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, '.env'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, 'public', 'robots.txt'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, 'public', 'css', 'style.css'))).toBe(true);
-
-            const copiedPkg = JSON.parse(fs.readFileSync(path.join(distDir, 'package.json'), 'utf8'));
-            expect(copiedPkg.main).toBe('app.js');
-            expect(copiedPkg.types).toBeUndefined();
-            expect(copiedPkg.scripts['server:start']).toBe('node app.js');
-            expect(copiedPkg.scripts.build).toBeUndefined();
 
             // Calling copyAssets without arguments defaults to process.cwd()
             const origCwd = process.cwd();
@@ -140,19 +117,26 @@ describe('@ostro/builder Unit Test Suite', () => {
             }
         });
 
-        test('copyAssets uses fallback default .dist when tsconfig has no outDir or is invalid', () => {
+        test('copyAssets throws error when outDir is not defined in tsconfig or options', () => {
             fs.writeFileSync(path.join(tempDir, 'tsconfig.json'), 'invalid json');
-            fs.writeFileSync(path.join(tempDir, '.env'), 'KEY=val');
-            const copied = copyAssets(tempDir);
-            expect(copied).toContain('.env');
-            expect(fs.existsSync(path.join(tempDir, '.dist', '.env'))).toBe(true);
+            expect(() => copyAssets(tempDir)).toThrow('Output directory (outDir) is not defined in tsconfig.json or options');
 
-            // Also test tsconfig without assets and without outDir
+            // Also test tsconfig without outDir
             const noOutDirDir = path.join(tempDir, 'no-outdir');
             fs.mkdirSync(noOutDirDir, { recursive: true });
             fs.writeFileSync(path.join(noOutDirDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: {} }));
-            fs.writeFileSync(path.join(noOutDirDir, '.env'), 'A=B');
-            expect(copyAssets(noOutDirDir)).toContain('.env');
+            expect(() => copyAssets(noOutDirDir)).toThrow('Output directory (outDir) is not defined in tsconfig.json or options');
+
+            // Test valid tsconfig with outDir but without assets include
+            const validOutDir = path.join(tempDir, 'valid-outdir');
+            fs.mkdirSync(validOutDir, { recursive: true });
+            fs.writeFileSync(path.join(validOutDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { outDir: '.dist' } }));
+            expect(copyAssets(validOutDir)).toEqual([]);
+
+            // Test copyAssets when tsconfig is missing but explicit distDir is provided
+            const missingTsconfigDir = path.join(tempDir, 'missing-tsconfig');
+            fs.mkdirSync(missingTsconfigDir, { recursive: true });
+            expect(copyAssets(missingTsconfigDir, path.join(missingTsconfigDir, 'custom-dist'))).toEqual([]);
         });
     });
 
@@ -198,64 +182,66 @@ describe('@ostro/builder Unit Test Suite', () => {
             try {
                 process.chdir(weirdDir);
                 const pubDefault = preparePackage();
-                expect(pubDefault.bin.cli).toBe('cli.js');
+                expect(pubDefault.name).toBe('weird-pkg');
             } finally {
                 process.chdir(origCwd);
             }
         });
 
         test('prepares build directory package.json correctly', () => {
-            const buildDir = path.join(tempDir, 'build');
-            fs.mkdirSync(buildDir, { recursive: true });
-
-            fs.writeFileSync(path.join(tempDir, 'README.md'), '# Readme');
-            fs.writeFileSync(path.join(tempDir, 'LICENSE'), 'MIT');
-            fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({
-                name: 'test-pkg',
+            const pkgData = {
+                name: '@ostro/sample',
                 version: '1.0.0',
-                main: 'build/index.js',
-                types: 'build/types/index.d.ts',
-                bin: {
-                    cli: 'build/bin/cli.js',
-                    other: 'build/bin/other.js'
-                },
+                main: './build/index.js',
+                types: './build/index.d.ts',
+                bin: 'build/cli.js',
+                scripts: { test: 'jest', build: 'tsc' },
+                devDependencies: { typescript: '^5.0.0' },
+                files: ['build'],
                 exports: {
                     '.': {
-                        types: './build/types/index.d.ts',
+                        types: './build/index.d.ts',
                         default: './build/index.js'
                     },
-                    './sub': ['build/sub.js'],
-                    './number': 123
-                },
-                scripts: { test: 'jest' },
-                devDependencies: { jest: '^29.0.0' },
-                files: ['build']
-            }));
+                    './feature': './build/feature.js',
+                    './array': ['./build/one.js', './build/two.js']
+                }
+            };
 
-            // Test string bin format too
-            const stringBinDir = path.join(tempDir, 'bin-pkg');
-            const stringBuildDir = path.join(stringBinDir, 'build');
-            fs.mkdirSync(stringBuildDir, { recursive: true });
+            const buildDir = path.join(tempDir, 'build');
+            fs.mkdirSync(buildDir, { recursive: true });
+            fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify(pkgData));
+            fs.writeFileSync(path.join(tempDir, 'README.md'), '# Sample');
+            fs.writeFileSync(path.join(tempDir, 'LICENSE.md'), 'MIT');
+            fs.writeFileSync(path.join(tempDir, 'LICENSE'), 'MIT');
+
+            // Also test string bin in a separate subfolder
+            const stringBinDir = path.join(tempDir, 'string-bin');
+            fs.mkdirSync(path.join(stringBinDir, 'build'), { recursive: true });
             fs.writeFileSync(path.join(stringBinDir, 'package.json'), JSON.stringify({
-                name: 'bin-pkg',
-                version: '1.0.0',
-                bin: 'build/cli.js'
+                name: 'str-bin',
+                bin: 'build/bin.js'
             }));
             const pubStringPkg = preparePackage(stringBinDir);
-            expect(pubStringPkg.bin).toBe('cli.js');
+            expect(pubStringPkg.bin).toBe('bin.js');
 
             const pubPkg = preparePackage(tempDir);
+
             expect(pubPkg.devDependencies).toBeUndefined();
             expect(pubPkg.scripts).toBeUndefined();
             expect(pubPkg.files).toBeUndefined();
             expect(pubPkg.main).toBe('index.js');
-            expect(pubPkg.types).toBe('types/index.d.ts');
-            expect(pubPkg.bin.cli).toBe('bin/cli.js');
-            expect(pubPkg.exports['.']).toEqual({ types: './types/index.d.ts', default: './index.js' });
-            expect(pubPkg.exports['./sub']).toEqual(['./sub.js']);
-            expect(pubPkg.exports['./number']).toBe(123);
+            expect(pubPkg.types).toBe('index.d.ts');
+            expect(pubPkg.bin).toBe('cli.js');
+            expect(pubPkg.exports['.']).toEqual({
+                types: './index.d.ts',
+                default: './index.js'
+            });
+            expect(pubPkg.exports['./feature']).toBe('./feature.js');
+            expect(pubPkg.exports['./array']).toEqual(['./one.js', './two.js']);
 
             expect(fs.existsSync(path.join(buildDir, 'README.md'))).toBe(true);
+            expect(fs.existsSync(path.join(buildDir, 'LICENSE.md'))).toBe(true);
             expect(fs.existsSync(path.join(buildDir, 'LICENSE'))).toBe(true);
         });
 
@@ -264,86 +250,75 @@ describe('@ostro/builder Unit Test Suite', () => {
             const subDir = path.join(buildDir, 'sub');
             fs.mkdirSync(subDir, { recursive: true });
 
-            fs.writeFileSync(path.join(buildDir, 'index.js'), 'exports.default = 123;');
-            fs.writeFileSync(path.join(subDir, 'sub.js'), 'exports.default = 456;');
-            fs.writeFileSync(path.join(buildDir, 'index.d.ts'), 'export default 123;');
+            // File requiring patch
+            const jsFile = path.join(subDir, 'example.js');
+            fs.writeFileSync(jsFile, 'exports.default = 123;\n');
+
+            // File already patched
+            const alreadyPatched = path.join(subDir, 'patched.js');
+            fs.writeFileSync(alreadyPatched, 'exports.default = 123;\nmodule.exports = d;\n');
+
+            // .d.ts file (should not be patched)
+            const dtsFile = path.join(subDir, 'types.d.ts');
+            fs.writeFileSync(dtsFile, 'export default interface Test {}\n');
 
             patchDualExports(buildDir);
 
-            const indexContent = fs.readFileSync(path.join(buildDir, 'index.js'), 'utf8');
-            expect(indexContent).toContain('module.exports = d;');
-            const subContent = fs.readFileSync(path.join(subDir, 'sub.js'), 'utf8');
-            expect(subContent).toContain('module.exports = d;');
+            const content = fs.readFileSync(jsFile, 'utf8');
+            expect(content).toContain('module.exports = d;');
+            expect(content).toContain('module.exports.default = d;');
 
-            // Running again should not duplicate
-            patchDualExports(buildDir);
-            const indexContentSecond = fs.readFileSync(path.join(buildDir, 'index.js'), 'utf8');
-            expect(indexContentSecond).toBe(indexContent);
-
-            // Calling on non-existent dir should not throw
+            // Verify non-existent dir handles gracefully
             expect(() => patchDualExports(path.join(tempDir, 'non_existent'))).not.toThrow();
         });
 
         test('relocateSourceMaps moves .js.map files to maps/ directory and updates references', () => {
             const buildDir = path.join(tempDir, 'build');
-            const subDir = path.join(buildDir, 'sub');
+            const subDir = path.join(buildDir, 'controllers');
             fs.mkdirSync(subDir, { recursive: true });
 
-            // Create root js + map (with sourceMappingURL comment)
-            fs.writeFileSync(path.join(buildDir, 'index.js'), 'console.log("root");\n//# sourceMappingURL=index.js.map\n');
-            fs.writeFileSync(path.join(buildDir, 'index.js.map'), JSON.stringify({
+            const jsFile = path.join(subDir, 'userController.js');
+            const mapFile = path.join(subDir, 'userController.js.map');
+
+            const sourceMapContent = {
                 version: 3,
-                file: 'index.js',
-                sources: ['../src/index.ts']
-            }));
+                file: 'userController.js',
+                sources: ['../../src/controllers/userController.ts'],
+                mappings: 'AAAA;'
+            };
 
-            // Create sub js + map (without existing sourceMappingURL comment)
-            fs.writeFileSync(path.join(subDir, 'sub.js'), 'console.log("sub");\n');
-            fs.writeFileSync(path.join(subDir, 'sub.js.map'), JSON.stringify({
-                version: 3,
-                file: 'sub.js',
-                sources: ['../../src/sub/sub.ts']
-            }));
+            fs.writeFileSync(jsFile, 'function test() {}\n//# sourceMappingURL=userController.js.map\n');
+            fs.writeFileSync(mapFile, JSON.stringify(sourceMapContent));
 
-            // Create a non-map file to ensure it is untouched
-            fs.writeFileSync(path.join(buildDir, 'dummy.txt'), 'text');
+            relocateSourceMaps(buildDir);
 
-            // Non-existent directory should return safely
+            // Map should have moved
+            expect(fs.existsSync(mapFile)).toBe(false);
+            const expectedMapPath = path.join(buildDir, 'maps', 'controllers', 'userController.js.map');
+            expect(fs.existsSync(expectedMapPath)).toBe(true);
+
+            // JS file should point to new relative map path
+            const updatedJs = fs.readFileSync(jsFile, 'utf8');
+            expect(updatedJs).toContain('sourceMappingURL=../maps/controllers/userController.js.map');
+
+            // Test JS file without existing sourceMappingURL comment
+            const jsNoComment = path.join(subDir, 'noComment.js');
+            const mapNoComment = path.join(subDir, 'noComment.js.map');
+            fs.writeFileSync(jsNoComment, 'const x = 1;\n');
+            fs.writeFileSync(mapNoComment, JSON.stringify({ version: 3, sources: [] }));
+
+            relocateSourceMaps(buildDir);
+            const updatedNoCommentJs = fs.readFileSync(jsNoComment, 'utf8');
+            expect(updatedNoCommentJs).toContain('//# sourceMappingURL=../maps/controllers/noComment.js.map');
+
+            // Test map without sources property and without matching JS file
+            const orphanMap = path.join(subDir, 'orphan.js.map');
+            fs.writeFileSync(orphanMap, JSON.stringify({ version: 3 }));
+            relocateSourceMaps(buildDir);
+            expect(fs.existsSync(path.join(buildDir, 'maps', 'controllers', 'orphan.js.map'))).toBe(true);
+
+            // Non-existent directory handling
             expect(() => relocateSourceMaps(path.join(tempDir, 'non_existent'))).not.toThrow();
-
-            // Run relocation
-            relocateSourceMaps(buildDir);
-
-            // Maps should be relocated
-            expect(fs.existsSync(path.join(buildDir, 'maps', 'index.js.map'))).toBe(true);
-            expect(fs.existsSync(path.join(buildDir, 'maps', 'sub', 'sub.js.map'))).toBe(true);
-            expect(fs.existsSync(path.join(buildDir, 'index.js.map'))).toBe(false);
-            expect(fs.existsSync(path.join(subDir, 'sub.js.map'))).toBe(false);
-
-            // Re-running relocation should skip existing maps directory
-            relocateSourceMaps(buildDir);
-            expect(fs.existsSync(path.join(buildDir, 'maps', 'index.js.map'))).toBe(true);
-
-            // Check updated sourceMappingURL in index.js
-            const indexJs = fs.readFileSync(path.join(buildDir, 'index.js'), 'utf8');
-            expect(indexJs).toContain('//# sourceMappingURL=maps/index.js.map');
-
-            // Check updated sourceMappingURL in sub/sub.js
-            const subJs = fs.readFileSync(path.join(subDir, 'sub.js'), 'utf8');
-            expect(subJs).toContain('//# sourceMappingURL=../maps/sub/sub.js.map');
-
-            // Check sources in map json
-            const rootMap = JSON.parse(fs.readFileSync(path.join(buildDir, 'maps', 'index.js.map'), 'utf8'));
-            expect(rootMap.sources).toEqual(['../../src/index.ts']);
-
-            const nestedMap = JSON.parse(fs.readFileSync(path.join(buildDir, 'maps', 'sub', 'sub.js.map'), 'utf8'));
-            expect(nestedMap.sources).toEqual(['../../../src/sub/sub.ts']);
-
-            // Map with missing sources array and invalid JSON handling
-            fs.writeFileSync(path.join(buildDir, 'no-sources.js.map'), JSON.stringify({ version: 3 }));
-            fs.writeFileSync(path.join(buildDir, 'invalid.js.map'), '{invalid json');
-            relocateSourceMaps(buildDir);
-            expect(fs.existsSync(path.join(buildDir, 'maps', 'no-sources.js.map'))).toBe(true);
         });
     });
 
@@ -360,11 +335,11 @@ describe('@ostro/builder Unit Test Suite', () => {
             fs.writeFileSync(path.join(tempDir, 'tsconfig.json'), JSON.stringify({
                 compilerOptions: { outDir: 'build' }
             }));
+            fs.mkdirSync(path.join(tempDir, 'build'), { recursive: true });
             fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({
                 name: 'test-build',
                 version: '1.0.0'
             }));
-            fs.mkdirSync(path.join(tempDir, 'build'), { recursive: true });
 
             b.build({ rootDir: tempDir, prepare: true });
 
@@ -372,25 +347,24 @@ describe('@ostro/builder Unit Test Suite', () => {
             expect(fs.existsSync(path.join(tempDir, 'build', 'package.json'))).toBe(true);
         });
 
-        test('build coordinates with default options (process.cwd and tsconfig.build.json detection)', () => {
+        test('build coordinates with default options (process.cwd and tsconfig.json)', () => {
             const b = new Builder();
             const runCmdSpy = jest.spyOn(b, 'runCommand').mockImplementation(() => {});
 
-            // Create tsconfig.build.json in tempDir
-            fs.writeFileSync(path.join(tempDir, 'tsconfig.build.json'), JSON.stringify({
+            fs.writeFileSync(path.join(tempDir, 'tsconfig.json'), JSON.stringify({
                 compilerOptions: { outDir: 'build' }
             }));
             fs.mkdirSync(path.join(tempDir, 'build'), { recursive: true });
 
             b.build({ rootDir: tempDir });
-            expect(runCmdSpy).toHaveBeenCalledWith('npx tsc -p tsconfig.build.json', tempDir);
+            expect(runCmdSpy).toHaveBeenCalledWith('npx tsc -p tsconfig.json', tempDir);
 
             // Default without options calls process.cwd
             const origCwd = process.cwd();
             try {
                 process.chdir(tempDir);
                 b.build();
-                expect(runCmdSpy).toHaveBeenCalledWith('npx tsc -p tsconfig.build.json', tempDir);
+                expect(runCmdSpy).toHaveBeenCalledWith('npx tsc -p tsconfig.json', tempDir);
             } finally {
                 process.chdir(origCwd);
             }

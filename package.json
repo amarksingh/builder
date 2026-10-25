@@ -20,7 +20,7 @@
     },
     "scripts": {
         "test": "jest",
-        "build": "npm run lint:check && rm -rf build && ostro-build --prepare",
+        "build": "npm run lint:check && rm -rf build && tsc && node build/bin.js --prepare",
         "prepublishOnly": "npm run build",
         "clean": "rm -rf build coverage",
         "lint:check": "tsc --noEmit"

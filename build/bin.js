@@ -12,15 +12,26 @@ else if (args.includes('--prepare-only')) {
     (0, packagePreparer_1.preparePackage)();
 }
 else {
-    const isPrepare = args.includes('--prepare');
+    const isApp = args.includes('--app');
+    const isLib = args.includes('--lib') || (!isApp && args.includes('--prepare'));
+    const isPrepare = isLib || args.includes('--prepare');
+    const isClean = args.includes('--clean');
     const pIndex = args.indexOf('-p');
     let projectConfig;
     if (pIndex !== -1 && args[pIndex + 1]) {
         projectConfig = args[pIndex + 1];
     }
+    const outIndex = args.indexOf('--outDir');
+    let outDir;
+    if (outIndex !== -1 && args[outIndex + 1]) {
+        outDir = args[outIndex + 1];
+    }
     builder_1.builder.build({
+        mode: isApp ? 'app' : 'lib',
         prepare: isPrepare,
-        projectConfig
+        clean: isClean,
+        projectConfig,
+        outDir
     });
 }
-//# sourceMappingURL=.maps/bin.js.map
+//# sourceMappingURL=.typed/.maps/bin.js.map

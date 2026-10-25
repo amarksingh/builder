@@ -6,8 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.matchesPattern = matchesPattern;
 exports.resolveMatchingAssets = resolveMatchingAssets;
 exports.copyAssets = copyAssets;
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
+const node_fs_1 = __importDefault(require("node:fs"));
+const node_path_1 = __importDefault(require("node:path"));
 /**
  * Checks whether a relative path matches a glob or regex pattern string.
  *
@@ -78,14 +78,26 @@ function resolveMatchingAssets(rootDir, assetConfig = {}, ignoredDirs = []) {
     if (includePatterns.length === 0) {
         return [];
     }
+    // Determine top-level scan directories from includePatterns
+    const topDirs = new Set();
+    for (const pat of includePatterns) {
+        const cleanPat = pat.replace(/^\.\//, '');
+        const firstSegment = cleanPat.split('/')[0];
+        if (firstSegment && !firstSegment.includes('*')) {
+            topDirs.add(firstSegment);
+        }
+        else {
+            topDirs.add('.');
+        }
+    }
     const matchedFiles = new Set();
     function walk(dir) {
-        if (!fs_1.default.existsSync(dir))
+        if (!node_fs_1.default.existsSync(dir))
             return;
-        const entries = fs_1.default.readdirSync(dir, { withFileTypes: true });
+        const entries = node_fs_1.default.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
-            const fullPath = path_1.default.join(dir, entry.name);
-            const relPath = path_1.default.relative(rootDir, fullPath).replace(/\\/g, '/');
+            const fullPath = node_path_1.default.join(dir, entry.name);
+            const relPath = node_path_1.default.relative(rootDir, fullPath).replace(/\\/g, '/');
             if (entry.isDirectory()) {
                 const isIgnored = ignoredDirs.some((d) => {
                     const cleanD = d.replace(/^\.\//, '').replace(/\/$/, '');
@@ -106,7 +118,27 @@ function resolveMatchingAssets(rootDir, assetConfig = {}, ignoredDirs = []) {
             }
         }
     }
-    walk(rootDir);
+    if (topDirs.has('.')) {
+        walk(rootDir);
+    }
+    else {
+        for (const sub of topDirs) {
+            const target = node_path_1.default.join(rootDir, sub);
+            if (node_fs_1.default.existsSync(target)) {
+                const stat = node_fs_1.default.statSync(target);
+                if (stat.isDirectory()) {
+                    walk(target);
+                }
+                else {
+                    const relPath = node_path_1.default.relative(rootDir, target).replace(/\\/g, '/');
+                    const isExcluded = excludePatterns.some((pat) => matchesPattern(relPath, pat));
+                    if (!isExcluded) {
+                        matchedFiles.add(relPath);
+                    }
+                }
+            }
+        }
+    }
     return Array.from(matchedFiles);
 }
 /**
@@ -117,18 +149,18 @@ function resolveMatchingAssets(rootDir, assetConfig = {}, ignoredDirs = []) {
  * @returns Array of relative paths that were copied.
  */
 function copyAssets(rootDir = process.cwd(), distDir, configPath = 'tsconfig.json') {
-    const tsconfigJsonPath = path_1.default.resolve(rootDir, configPath);
+    const tsconfigJsonPath = node_path_1.default.resolve(rootDir, configPath);
     let assetConfig = {};
     let resolvedDistDir = distDir || '';
     let ignoredDirs = [];
-    if (fs_1.default.existsSync(tsconfigJsonPath)) {
+    if (node_fs_1.default.existsSync(tsconfigJsonPath)) {
         try {
-            const tsconfig = JSON.parse(fs_1.default.readFileSync(tsconfigJsonPath, 'utf8'));
+            const tsconfig = JSON.parse(node_fs_1.default.readFileSync(tsconfigJsonPath, 'utf8'));
             if (tsconfig.assets) {
                 assetConfig = tsconfig.assets;
             }
             if (!resolvedDistDir && tsconfig.compilerOptions && tsconfig.compilerOptions.outDir) {
-                resolvedDistDir = path_1.default.resolve(rootDir, tsconfig.compilerOptions.outDir);
+                resolvedDistDir = node_path_1.default.resolve(rootDir, tsconfig.compilerOptions.outDir);
             }
             if (Array.isArray(tsconfig.exclude)) {
                 ignoredDirs = [...tsconfig.exclude];
@@ -139,34 +171,45 @@ function copyAssets(rootDir = process.cwd(), distDir, configPath = 'tsconfig.jso
     if (!resolvedDistDir) {
         throw new Error('Output directory (outDir) is not defined in tsconfig.json or options');
     }
-    const distBaseName = path_1.default.basename(resolvedDistDir);
+    const distBaseName = node_path_1.default.basename(resolvedDistDir);
     if (!ignoredDirs.includes(distBaseName)) {
         ignoredDirs.push(distBaseName);
     }
-    if (!fs_1.default.existsSync(resolvedDistDir)) {
-        fs_1.default.mkdirSync(resolvedDistDir, { recursive: true });
+    if (!node_fs_1.default.existsSync(resolvedDistDir)) {
+        node_fs_1.default.mkdirSync(resolvedDistDir, { recursive: true });
     }
     const filesToCopy = resolveMatchingAssets(rootDir, assetConfig, ignoredDirs);
     for (const relFile of filesToCopy) {
-        const srcFile = path_1.default.join(rootDir, relFile);
-        const destFile = path_1.default.join(resolvedDistDir, relFile);
-        const destFolder = path_1.default.dirname(destFile);
-        if (!fs_1.default.existsSync(destFolder)) {
-            fs_1.default.mkdirSync(destFolder, { recursive: true });
+        const srcFile = node_path_1.default.join(rootDir, relFile);
+        // If relFile starts with 'src/', strip it so assets map to build/ mirroring the compiled JS output
+        const outRelPath = relFile.replace(/^src[\\/]/, '');
+        const destFile = node_path_1.default.join(resolvedDistDir, outRelPath);
+        const destFolder = node_path_1.default.dirname(destFile);
+        if (!node_fs_1.default.existsSync(destFolder)) {
+            node_fs_1.default.mkdirSync(destFolder, { recursive: true });
         }
         let content = null;
         try {
-            content = fs_1.default.readFileSync(srcFile, 'utf8');
+            content = node_fs_1.default.readFileSync(srcFile, 'utf8');
         }
         catch (_) { }
         const tsNodeBlockRegex = /\n?\/\/\s*Ensure ts-node is registered for TypeScript execution\s*\ntry\s*\{\s*const tsNode = require\(['"]ts-node['"]\);\s*if \(!tsNode\[Symbol\.for\(['"]ts-node\.register\.instance['"]\)\]\) \{\s*tsNode\.register\(\{\s*transpileOnly:\s*true\s*\}\);\s*\}\s*\}\s*catch \(_\) \{\s*\}\s*\n?/g;
-        if (content !== null && tsNodeBlockRegex.test(content)) {
-            fs_1.default.writeFileSync(destFile, content.replace(tsNodeBlockRegex, '\n'));
+        const lstat = node_fs_1.default.lstatSync(srcFile);
+        if (lstat.isSymbolicLink()) {
+            const symlinkTarget = node_fs_1.default.readlinkSync(srcFile);
+            try {
+                node_fs_1.default.unlinkSync(destFile);
+            }
+            catch (_) { }
+            node_fs_1.default.symlinkSync(symlinkTarget, destFile);
+        }
+        else if (content !== null && tsNodeBlockRegex.test(content)) {
+            node_fs_1.default.writeFileSync(destFile, content.replace(tsNodeBlockRegex, '\n'));
         }
         else {
-            fs_1.default.copyFileSync(srcFile, destFile);
+            node_fs_1.default.copyFileSync(srcFile, destFile);
         }
     }
     return filesToCopy;
 }
-//# sourceMappingURL=.maps/assetCopier.js.map
+//# sourceMappingURL=.typed/.maps/assetCopier.js.map

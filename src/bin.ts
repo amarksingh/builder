@@ -11,14 +11,27 @@ if (args.includes('--assets-only')) {
 } else if (args.includes('--prepare-only')) {
     preparePackage();
 } else {
-    const isPrepare: boolean = args.includes('--prepare');
+    const isApp: boolean = args.includes('--app');
+    const isLib: boolean = args.includes('--lib') || (!isApp && args.includes('--prepare'));
+    const isPrepare: boolean = isLib || args.includes('--prepare');
+    const isClean: boolean = args.includes('--clean');
     const pIndex: number = args.indexOf('-p');
     let projectConfig: string | undefined;
     if (pIndex !== -1 && args[pIndex + 1]) {
         projectConfig = args[pIndex + 1];
     }
+    const outIndex: number = args.indexOf('--outDir');
+    let outDir: string | undefined;
+    if (outIndex !== -1 && args[outIndex + 1]) {
+        outDir = args[outIndex + 1];
+    }
+
     builder.build({
+        mode: isApp ? 'app' : 'lib',
         prepare: isPrepare,
-        projectConfig
+        clean: isClean,
+        projectConfig,
+        outDir
     });
 }
+

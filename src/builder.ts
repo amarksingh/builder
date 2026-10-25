@@ -1,6 +1,6 @@
-import childProcess from 'child_process';
-import path from 'path';
-import fs from 'fs';
+import fs from 'node:fs';
+import path from 'node:path';
+import childProcess from 'node:child_process';
 import { copyAssets } from './assetCopier';
 import { preparePackage } from './packagePreparer';
 
@@ -9,6 +9,9 @@ export interface BuildOptions {
     projectConfig?: string;
     prepare?: boolean;
     copyAssetsOnly?: boolean;
+    clean?: boolean;
+    mode?: 'lib' | 'app';
+    outDir?: string;
 }
 
 export class Builder {
@@ -30,14 +33,24 @@ export class Builder {
     public build(options: BuildOptions = {}): void {
         const rootDir: string = options.rootDir || process.cwd();
         const configPath: string = options.projectConfig || 'tsconfig.json';
+        const isApp: boolean = options.mode === 'app';
+
+        if (options.clean) {
+            const defaultTargetDir = isApp ? '.dist' : 'build';
+            const targetDir = options.outDir || defaultTargetDir;
+            const fullTargetDir = path.resolve(rootDir, targetDir);
+            if (fs.existsSync(fullTargetDir)) {
+                fs.rmSync(fullTargetDir, { recursive: true, force: true });
+            }
+        }
 
         if (!options.copyAssetsOnly) {
             this.runCommand(`npx tsc -p ${configPath}`, rootDir);
         }
 
-        copyAssets(rootDir, undefined, configPath);
+        copyAssets(rootDir, options.outDir, configPath);
 
-        if (options.prepare) {
+        if (options.prepare && !isApp) {
             preparePackage(rootDir);
         }
     }

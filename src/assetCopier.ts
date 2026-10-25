@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export interface AssetConfig {
     include?: string[];
@@ -86,6 +86,18 @@ export function resolveMatchingAssets(
         return [];
     }
 
+    // Determine top-level scan directories from includePatterns
+    const topDirs: Set<string> = new Set<string>();
+    for (const pat of includePatterns) {
+        const cleanPat: string = pat.replace(/^\.\//, '');
+        const firstSegment: string = cleanPat.split('/')[0];
+        if (firstSegment && !firstSegment.includes('*')) {
+            topDirs.add(firstSegment);
+        } else {
+            topDirs.add('.');
+        }
+    }
+
     const matchedFiles: Set<string> = new Set<string>();
 
     function walk(dir: string): void {
@@ -115,7 +127,26 @@ export function resolveMatchingAssets(
         }
     }
 
-    walk(rootDir);
+    if (topDirs.has('.')) {
+        walk(rootDir);
+    } else {
+        for (const sub of topDirs) {
+            const target: string = path.join(rootDir, sub);
+            if (fs.existsSync(target)) {
+                const stat: fs.Stats = fs.statSync(target);
+                if (stat.isDirectory()) {
+                    walk(target);
+                } else {
+                    const relPath: string = path.relative(rootDir, target).replace(/\\/g, '/');
+                    const isExcluded: boolean = excludePatterns.some((pat: string) => matchesPattern(relPath, pat));
+                    if (!isExcluded) {
+                        matchedFiles.add(relPath);
+                    }
+                }
+            }
+        }
+    }
+
     return Array.from(matchedFiles);
 }
 
@@ -167,7 +198,9 @@ export function copyAssets(
     const filesToCopy: string[] = resolveMatchingAssets(rootDir, assetConfig, ignoredDirs);
     for (const relFile of filesToCopy) {
         const srcFile: string = path.join(rootDir, relFile);
-        const destFile: string = path.join(resolvedDistDir, relFile);
+        // If relFile starts with 'src/', strip it so assets map to build/ mirroring the compiled JS output
+        const outRelPath: string = relFile.replace(/^src[\\/]/, '');
+        const destFile: string = path.join(resolvedDistDir, outRelPath);
         const destFolder: string = path.dirname(destFile);
         if (!fs.existsSync(destFolder)) {
             fs.mkdirSync(destFolder, { recursive: true });
@@ -178,7 +211,14 @@ export function copyAssets(
         } catch (_) { }
 
         const tsNodeBlockRegex: RegExp = /\n?\/\/\s*Ensure ts-node is registered for TypeScript execution\s*\ntry\s*\{\s*const tsNode = require\(['"]ts-node['"]\);\s*if \(!tsNode\[Symbol\.for\(['"]ts-node\.register\.instance['"]\)\]\) \{\s*tsNode\.register\(\{\s*transpileOnly:\s*true\s*\}\);\s*\}\s*\}\s*catch \(_\) \{\s*\}\s*\n?/g;
-        if (content !== null && tsNodeBlockRegex.test(content)) {
+        const lstat: fs.Stats = fs.lstatSync(srcFile);
+        if (lstat.isSymbolicLink()) {
+            const symlinkTarget: string = fs.readlinkSync(srcFile);
+            try {
+                fs.unlinkSync(destFile);
+            } catch (_) { }
+            fs.symlinkSync(symlinkTarget, destFile);
+        } else if (content !== null && tsNodeBlockRegex.test(content)) {
             fs.writeFileSync(destFile, content.replace(tsNodeBlockRegex, '\n'));
         } else {
             fs.copyFileSync(srcFile, destFile);

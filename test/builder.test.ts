@@ -1,6 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import { describe, test, expect, beforeEach, afterEach, jest } from "@jest/globals";
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import {
     matchesPattern,
     resolveMatchingAssets,
@@ -90,15 +91,25 @@ const appModule = require('./bootstrap/app');
                 main: 'app.ts'
             }));
 
+            // File inside src/ to test src/ prefix stripping
+            const srcDir = path.join(tempDir, 'src', 'stubs');
+            fs.mkdirSync(srcDir, { recursive: true });
+            fs.writeFileSync(path.join(srcDir, 'test.stub'), 'stub content');
+
             // Configuration with explicit assets include
             fs.writeFileSync(path.join(tempDir, 'tsconfig.json'), JSON.stringify({
                 compilerOptions: { outDir: '.dist' },
                 exclude: ['node_modules', '.dist', 'build', 'public/ignore.log'],
                 assets: {
-                    include: ['package.json', 'assistant', '.env*', 'public/**/*'],
+                    include: ['package.json', 'assistant', '.env*', 'public/**/*', 'src/**/*.stub'],
                     exclude: ['**/*.ts']
                 }
             }));
+
+            // Create a symlink to verify symbolic link handling and re-linking
+            const symlinkTarget = path.join(tempDir, 'storage-target');
+            fs.mkdirSync(symlinkTarget, { recursive: true });
+            fs.symlinkSync(symlinkTarget, path.join(tempDir, 'public', 'storage'));
 
             const copied = copyAssets(tempDir);
             expect(copied).toContain('package.json');
@@ -106,6 +117,9 @@ const appModule = require('./bootstrap/app');
             expect(copied).toContain('.env');
             expect(copied).toContain('public/robots.txt');
             expect(copied).toContain('public/css/style.css');
+            expect(copied).toContain('public/storage');
+            expect(copied).toContain('src/stubs/test.stub');
+            expect(fs.existsSync(path.join(tempDir, '.dist', 'stubs', 'test.stub'))).toBe(true);
             expect(copied).not.toContain('public/excluded.ts');
             expect(copied).not.toContain('node_modules/dummy/index.js');
 
@@ -118,6 +132,20 @@ const appModule = require('./bootstrap/app');
             expect(fs.existsSync(path.join(distDir, '.env'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, 'public', 'robots.txt'))).toBe(true);
             expect(fs.existsSync(path.join(distDir, 'public', 'css', 'style.css'))).toBe(true);
+            expect(fs.lstatSync(path.join(distDir, 'public', 'storage')).isSymbolicLink()).toBe(true);
+
+            // Re-run copyAssets to test overwrite of existing symlink in destDir
+            copyAssets(tempDir);
+            expect(fs.lstatSync(path.join(distDir, 'public', 'storage')).isSymbolicLink()).toBe(true);
+
+            // Test resolveMatchingAssets with specific top-level directory and direct top-level file include
+            const directFileAssets = resolveMatchingAssets(tempDir, {
+                include: ['src/**/*.stub', 'package.json', 'assistant', 'non_existent_folder/**/*'],
+                exclude: ['assistant']
+            });
+            expect(directFileAssets).toContain('package.json');
+            expect(directFileAssets).toContain('src/stubs/test.stub');
+            expect(directFileAssets).not.toContain('assistant');
 
             // Calling copyAssets without arguments defaults to process.cwd()
             const origCwd = process.cwd();
@@ -308,12 +336,12 @@ const appModule = require('./bootstrap/app');
 
             // Map should have moved
             expect(fs.existsSync(mapFile)).toBe(false);
-            const expectedMapPath = path.join(buildDir, '.maps', 'controllers', 'userController.js.map');
+            const expectedMapPath = path.join(buildDir, '.typed', '.maps', 'controllers', 'userController.js.map');
             expect(fs.existsSync(expectedMapPath)).toBe(true);
 
             // JS file should point to new relative map path
             const updatedJs = fs.readFileSync(jsFile, 'utf8');
-            expect(updatedJs).toContain('sourceMappingURL=../.maps/controllers/userController.js.map');
+            expect(updatedJs).toContain('sourceMappingURL=../.typed/.maps/controllers/userController.js.map');
 
             // Test JS file without existing sourceMappingURL comment
             const jsNoComment = path.join(subDir, 'noComment.js');
@@ -323,13 +351,13 @@ const appModule = require('./bootstrap/app');
 
             relocateSourceMaps(buildDir);
             const updatedNoCommentJs = fs.readFileSync(jsNoComment, 'utf8');
-            expect(updatedNoCommentJs).toContain('//# sourceMappingURL=../.maps/controllers/noComment.js.map');
+            expect(updatedNoCommentJs).toContain('//# sourceMappingURL=../.typed/.maps/controllers/noComment.js.map');
 
             // Test map without sources property and without matching JS file
             const orphanMap = path.join(subDir, 'orphan.js.map');
             fs.writeFileSync(orphanMap, JSON.stringify({ version: 3 }));
             relocateSourceMaps(buildDir);
-            expect(fs.existsSync(path.join(buildDir, '.maps', 'controllers', 'orphan.js.map'))).toBe(true);
+            expect(fs.existsSync(path.join(buildDir, '.typed', '.maps', 'controllers', 'orphan.js.map'))).toBe(true);
 
             // Non-existent directory handling
             expect(() => relocateSourceMaps(path.join(tempDir, 'non_existent'))).not.toThrow();
@@ -395,6 +423,42 @@ const appModule = require('./bootstrap/app');
             b.build({ rootDir: tempDir, copyAssetsOnly: true, projectConfig: 'tsconfig.custom.json' });
 
             expect(runCmdSpy).not.toHaveBeenCalled();
+        });
+
+        test('build handles clean option for lib and app modes', () => {
+            const b = new Builder();
+            jest.spyOn(b, 'runCommand').mockImplementation(() => {});
+
+            // Test lib clean
+            const buildFolder = path.join(tempDir, 'build');
+            fs.mkdirSync(buildFolder, { recursive: true });
+            const oldFile = path.join(buildFolder, 'old.txt');
+            fs.writeFileSync(oldFile, 'old');
+            fs.writeFileSync(path.join(tempDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { outDir: 'build' } }));
+
+            b.build({ rootDir: tempDir, clean: true, mode: 'lib' });
+            expect(fs.existsSync(oldFile)).toBe(false);
+
+            // Test app clean with custom outDir
+            const distFolder = path.join(tempDir, '.custom-dist');
+            fs.mkdirSync(distFolder, { recursive: true });
+            const customOldFile = path.join(distFolder, 'old.txt');
+            fs.writeFileSync(customOldFile, 'old');
+            b.build({ rootDir: tempDir, clean: true, mode: 'app', outDir: '.custom-dist' });
+            expect(fs.existsSync(customOldFile)).toBe(false);
+
+            // Test app clean with default .dist
+            const defaultDist = path.join(tempDir, '.dist');
+            fs.mkdirSync(defaultDist, { recursive: true });
+            const defaultOldFile = path.join(defaultDist, 'old.txt');
+            fs.writeFileSync(defaultOldFile, 'old');
+            fs.writeFileSync(path.join(tempDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { outDir: '.dist' } }));
+            b.build({ rootDir: tempDir, clean: true, mode: 'app' });
+            expect(fs.existsSync(defaultOldFile)).toBe(false);
+
+            // Non-existent target dir does not throw
+            const nonExistentDir = path.join(tempDir, 'never-created');
+            expect(() => b.build({ rootDir: nonExistentDir, clean: true, outDir: 'non_existent' })).not.toThrow();
         });
 
         test('exported singleton builder instance is defined', () => {

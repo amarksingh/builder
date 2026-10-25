@@ -1,20 +1,20 @@
 {
   "name": "@ostro/builder",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-alpha.1",
   "description": "Unified TypeScript build tool and non-TS asset synchronizer for OstroJS ecosystem",
   "main": "index.js",
-  "types": ".types/index.d.ts",
+  "types": ".typed/index.d.ts",
   "bin": {
     "ostro-builder": "bin.js",
     "ostro-build": "bin.js"
   },
   "exports": {
     ".": {
-      "types": "./.types/index.d.ts",
+      "types": "./.typed/index.d.ts",
       "default": "./index.js"
     },
     "./*": {
-      "types": "./.types/*.d.ts",
+      "types": "./.typed/*.d.ts",
       "default": "./*.js"
     }
   },

@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
  * Prepares the build directory for publication by cleaning package.json and patching dual exports.
@@ -27,7 +27,7 @@ export function preparePackage(pkgDir: string = process.cwd()): Record<string, a
     delete pubPkg.files;
 
     const stripBuild = (str: string): string => {
-        return str.replace(/^(\.\/)?build\//, './').replace(/^(\.\/)?types\//, './.types/');
+        return str.replace(/^(\.\/)?build\//, './').replace(/^(\.\/)?types\//, './.typed/');
     };
 
     if (typeof pubPkg.main === 'string') pubPkg.main = stripBuild(pubPkg.main).replace(/^\.\//, '');
@@ -78,21 +78,21 @@ export function preparePackage(pkgDir: string = process.cwd()): Record<string, a
 }
 
 /**
- * Relocates emitted .js.map source map files into a dedicated maps/ directory within buildDir.
+ * Relocates emitted .js.map source map files into a dedicated .typed/.maps directory within buildDir.
  * Updates sourceMappingURL in corresponding .js files and preserves source paths in source maps.
  *
  * @param buildDir - The build output directory.
  */
 export function relocateSourceMaps(buildDir: string): void {
     if (!fs.existsSync(buildDir)) return;
-    const mapDir: string = path.join(buildDir, '.maps');
+    const mapDir: string = path.join(buildDir, '.typed', '.maps');
 
     function scanAndMove(dir: string): void {
         const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
             const fullPath: string = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                if (entry.name !== '.maps' && entry.name !== 'maps') {
+                if (entry.name !== '.maps' && entry.name !== 'maps' && entry.name !== '.typed') {
                     scanAndMove(fullPath);
                 }
             } else if (entry.isFile() && entry.name.endsWith('.js.map')) {
